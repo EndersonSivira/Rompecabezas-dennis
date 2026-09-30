@@ -166,7 +166,7 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 20px;
+      padding: 15px;
       text-align: center;
       z-index: 10;
       border-radius: 10px;
@@ -174,6 +174,35 @@
 
     .hidden {
       display: none !important;
+    }
+
+    /* Selector de imágenes / Galería */
+    .puzzle-selector {
+      display: flex;
+      gap: 10px;
+      margin: 15px 0;
+      width: 100%;
+      justify-content: center;
+    }
+
+    .puzzle-thumb {
+      width: 60px;
+      height: 90px;
+      border-radius: 6px;
+      border: 2px solid #475569;
+      background-size: cover;
+      background-position: center;
+      cursor: pointer;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .puzzle-thumb:hover {
+      transform: scale(1.05);
+    }
+
+    .puzzle-thumb.active {
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
     }
 
     .btn {
@@ -193,17 +222,6 @@
     .btn:hover {
       background-color: var(--accent-hover);
       color: #fff;
-    }
-
-    select {
-      background-color: var(--card-bg);
-      color: var(--text);
-      border: 1px solid var(--accent);
-      padding: 8px;
-      border-radius: 6px;
-      margin: 10px 0;
-      width: 80%;
-      font-size: 0.9rem;
     }
 
     .win-text {
@@ -237,24 +255,24 @@
 
     <!-- Menú de Inicio -->
     <div id="start-overlay" class="overlay">
-      <h2>¡A Jugar!</h2>
-      <p style="font-size:0.85rem; color:#94a3b8; margin: 10px 0;">Toca una pieza para seleccionarla y luego toca la casilla del tablero donde quieras colocarla.</p>
+      <h2>Selecciona Imagen</h2>
+      <p style="font-size:0.8rem; color:#94a3b8; margin-top: 5px;">Modo Difícil (5x6 piezas)</p>
       
-      <label for="grid-cols" style="font-size:0.8rem;">Dificultad:</label>
-      <select id="grid-cols">
-        <option value="3">Fácil (3x4 piezas)</option>
-        <option value="4" selected>Normal (4x5 piezas)</option>
-        <option value="5">Difícil (5x6 piezas)</option>
-      </select>
+      <!-- Selector de Rompecabezas -->
+      <div class="puzzle-selector">
+        <div class="puzzle-thumb active" data-index="0"></div>
+        <div class="puzzle-thumb" data-index="1"></div>
+        <div class="puzzle-thumb" data-index="2"></div>
+      </div>
 
-      <button id="start-btn" class="btn">Iniciar</button>
+      <button id="start-btn" class="btn">Iniciar Juego</button>
     </div>
 
     <!-- Victoria -->
     <div id="win-overlay" class="overlay hidden">
       <h2 class="win-text">¡Completado!</h2>
       <p>Tiempo total: <span id="final-time">00:00</span></p>
-      <button id="restart-btn" class="btn">Volver a Jugar</button>
+      <button id="restart-btn" class="btn">Menú Principal</button>
     </div>
   </div>
 
@@ -262,12 +280,19 @@
   <div id="pieces-bank" class="pieces-bank"></div>
 
   <script>
-    // Enlace raw a tu imagen en GitHub
-    const IMAGE_URL = 'https://github.com/EndersonSivira/Rompecabezas-dennis/raw/main/IMG-20260930-WA0021.jpg';
+    // Lista de rompecabezas disponibles (puedes agregar más URLs de tu repositorio)
+    const PUZZLES = [
+      'https://github.com/EndersonSivira/Rompecabezas-dennis/raw/main/IMG-20260930-WA0021.jpg',
+      'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=600&auto=format&fit=crop',
+      'https://images.unsplash.com/photo-1534447677768-be436bb09401?q=80&w=600&auto=format&fit=crop'
+    ];
 
-    let cols = 4;
-    let rows = 5;
-    let totalPieces = 0;
+    // Configuración fija en MODO DÍFICIL (5x6)
+    const cols = 5;
+    const rows = 6;
+    const totalPieces = cols * rows;
+
+    let selectedImageIndex = 0;
     let placedCount = 0;
     let timerInterval = null;
     let secondsElapsed = 0;
@@ -281,8 +306,18 @@
     const winOverlay = document.getElementById('win-overlay');
     const startBtn = document.getElementById('start-btn');
     const restartBtn = document.getElementById('restart-btn');
-    const gridSelect = document.getElementById('grid-cols');
     const finalTimeEl = document.getElementById('final-time');
+    const thumbs = document.querySelectorAll('.puzzle-thumb');
+
+    // Cargar miniaturas de la galería
+    thumbs.forEach((thumb, idx) => {
+      thumb.style.backgroundImage = `url('${PUZZLES[idx]}')`;
+      thumb.addEventListener('click', () => {
+        thumbs.forEach(t => t.classList.remove('active'));
+        thumb.classList.add('active');
+        selectedImageIndex = idx;
+      });
+    });
 
     // Web Audio API para efectos de sonido
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -318,9 +353,6 @@
     }
 
     function initGame() {
-      cols = parseInt(gridSelect.value);
-      rows = cols + 1;
-      totalPieces = cols * rows;
       placedCount = 0;
       secondsElapsed = 0;
       selectedPiece = null;
@@ -335,6 +367,7 @@
       boardEl.innerHTML = '';
       bankEl.innerHTML = '';
 
+      const currentImageUrl = PUZZLES[selectedImageIndex];
       const pieces = [];
 
       for (let r = 0; r < rows; r++) {
@@ -345,9 +378,7 @@
           const slot = document.createElement('div');
           slot.classList.add('slot');
           slot.dataset.index = index;
-          
           slot.addEventListener('click', () => handleSlotClick(slot));
-
           boardEl.appendChild(slot);
 
           // Crear pieza
@@ -362,7 +393,7 @@
 
           const bgPosX = (c / (cols - 1)) * 100;
           const bgPosY = (r / (rows - 1)) * 100;
-          piece.style.backgroundImage = `url('${IMAGE_URL}')`;
+          piece.style.backgroundImage = `url('${currentImageUrl}')`;
           piece.style.backgroundSize = `${cols * 100}% ${rows * 100}%`;
           piece.style.backgroundPosition = `${bgPosX}% ${bgPosY}%`;
 
@@ -383,16 +414,13 @@
       timerInterval = setInterval(updateTimer, 1000);
     }
 
-    // Seleccionar o deseleccionar pieza al tocarla
     function handlePieceClick(piece) {
       if (piece.classList.contains('placed')) return;
 
       if (selectedPiece === piece) {
-        // Deseleccionar si se vuelve a tocar la misma
         piece.classList.remove('selected');
         selectedPiece = null;
       } else {
-        // Seleccionar nueva pieza
         if (selectedPiece) {
           selectedPiece.classList.remove('selected');
         }
@@ -402,14 +430,12 @@
       }
     }
 
-    // Al tocar una casilla del tablero
     function handleSlotClick(slot) {
       if (!selectedPiece) return;
 
       const pieceIndex = selectedPiece.dataset.index;
       const slotIndex = slot.dataset.index;
 
-      // Verificar si la pieza coincide exactamente con la casilla toque y si está vacía
       if (pieceIndex === slotIndex && slot.children.length === 0) {
         selectedPiece.classList.remove('selected');
         selectedPiece.classList.add('placed');
@@ -443,7 +469,10 @@
     }
 
     startBtn.addEventListener('click', initGame);
-    restartBtn.addEventListener('click', initGame);
+    restartBtn.addEventListener('click', () => {
+      winOverlay.classList.add('hidden');
+      startOverlay.classList.remove('hidden');
+    });
   </script>
 </body>
 </html>
