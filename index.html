@@ -99,6 +99,11 @@
       border: 1px dashed rgba(255, 255, 255, 0.15);
       box-sizing: border-box;
       position: relative;
+      cursor: pointer;
+    }
+
+    .slot:hover {
+      background-color: rgba(56, 189, 248, 0.1);
     }
 
     /* Zona de piezas para armar */
@@ -120,18 +125,20 @@
     /* Piezas sueltas */
     .piece {
       background-repeat: no-repeat;
-      cursor: grab;
+      cursor: pointer;
       touch-action: none;
       box-shadow: 0 4px 8px rgba(0,0,0,0.4);
       border-radius: 4px;
-      border: 1px solid rgba(255,255,255,0.3);
-      transition: transform 0.1s ease;
+      border: 2px solid rgba(255,255,255,0.3);
+      transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     }
 
-    .piece:active {
-      cursor: grabbing;
-      transform: scale(1.05);
-      z-index: 1000;
+    /* Estado cuando la pieza está seleccionada */
+    .piece.selected {
+      border-color: #38bdf8 !important;
+      box-shadow: 0 0 12px #38bdf8;
+      transform: scale(1.1);
+      z-index: 100;
     }
 
     .piece.placed {
@@ -144,6 +151,7 @@
       left: 0;
       width: 100% !important;
       height: 100% !important;
+      transform: none !important;
     }
 
     /* Modales y Overlays */
@@ -230,7 +238,7 @@
     <!-- Menú de Inicio -->
     <div id="start-overlay" class="overlay">
       <h2>¡A Jugar!</h2>
-      <p style="font-size:0.85rem; color:#94a3b8; margin: 10px 0;">Arrastra las piezas de abajo hacia el tablero para armar la imagen.</p>
+      <p style="font-size:0.85rem; color:#94a3b8; margin: 10px 0;">Toca una pieza para seleccionarla y luego toca la casilla del tablero donde quieras colocarla.</p>
       
       <label for="grid-cols" style="font-size:0.8rem;">Dificultad:</label>
       <select id="grid-cols">
@@ -254,7 +262,7 @@
   <div id="pieces-bank" class="pieces-bank"></div>
 
   <script>
-    // URL de la imagen vertical formato teléfono (9:16)
+    // Enlace raw a tu imagen en GitHub
     const IMAGE_URL = 'https://github.com/EndersonSivira/Rompecabezas-dennis/raw/main/IMG-20260930-WA0021.jpg';
 
     let cols = 4;
@@ -263,7 +271,7 @@
     let placedCount = 0;
     let timerInterval = null;
     let secondsElapsed = 0;
-    let draggedPiece = null;
+    let selectedPiece = null;
 
     const boardEl = document.getElementById('board');
     const bankEl = document.getElementById('pieces-bank');
@@ -286,7 +294,13 @@
       osc.connect(gain);
       gain.connect(audioCtx.destination);
 
-      if (type === 'snap') {
+      if (type === 'select') {
+        osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.05);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.05);
+      } else if (type === 'snap') {
         osc.frequency.setValueAtTime(500, audioCtx.currentTime);
         osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.1);
         gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
@@ -305,10 +319,11 @@
 
     function initGame() {
       cols = parseInt(gridSelect.value);
-      rows = cols + 1; // Mantiene el aspecto vertical del teléfono
+      rows = cols + 1;
       totalPieces = cols * rows;
       placedCount = 0;
       secondsElapsed = 0;
+      selectedPiece = null;
       
       progressEl.textContent = '0%';
       timerEl.textContent = '00:00';
@@ -322,48 +337,44 @@
 
       const pieces = [];
 
-      // Crear celdas del tablero y generar piezas
       for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
           const index = r * cols + c;
 
-          // Crear espacio receptivo en el tablero
+          // Crear casilla en el tablero
           const slot = document.createElement('div');
           slot.classList.add('slot');
           slot.dataset.index = index;
           
-          slot.addEventListener('dragover', (e) => e.preventDefault());
-          slot.addEventListener('drop', (e) => handleDropOnSlot(e, slot));
+          slot.addEventListener('click', () => handleSlotClick(slot));
 
           boardEl.appendChild(slot);
 
           // Crear pieza
           const piece = document.createElement('div');
           piece.classList.add('piece');
-          piece.draggable = true;
           piece.dataset.index = index;
 
-          // Dimensiones proporcionales para el banco
           const pieceWidth = Math.floor(260 / cols);
           const pieceHeight = Math.floor((260 * (16 / 9)) / rows);
           piece.style.width = `${pieceWidth}px`;
           piece.style.height = `${pieceHeight}px`;
 
-          // Recorte exacto de la imagen
           const bgPosX = (c / (cols - 1)) * 100;
           const bgPosY = (r / (rows - 1)) * 100;
           piece.style.backgroundImage = `url('${IMAGE_URL}')`;
           piece.style.backgroundSize = `${cols * 100}% ${rows * 100}%`;
           piece.style.backgroundPosition = `${bgPosX}% ${bgPosY}%`;
 
-          // Eventos para Arrastrar (Mouse y Táctil)
-          setupDragEvents(piece);
+          piece.addEventListener('click', (e) => {
+            e.stopPropagation();
+            handlePieceClick(piece);
+          });
 
           pieces.push(piece);
         }
       }
 
-      // Mezclar las piezas en el banco inferior
       pieces.sort(() => Math.random() - 0.5);
       pieces.forEach(p => bankEl.appendChild(p));
 
@@ -372,51 +383,41 @@
       timerInterval = setInterval(updateTimer, 1000);
     }
 
-    // Configuración Drag & Drop táctil + mouse
-    function setupDragEvents(piece) {
-      piece.addEventListener('dragstart', (e) => {
-        draggedPiece = piece;
-        e.dataTransfer.setData('text/plain', piece.dataset.index);
-      });
+    // Seleccionar o deseleccionar pieza al tocarla
+    function handlePieceClick(piece) {
+      if (piece.classList.contains('placed')) return;
 
-      // Soporte para Pantallas Táctiles (Móviles)
-      piece.addEventListener('touchstart', (e) => {
-        draggedPiece = piece;
-      }, { passive: true });
-
-      piece.addEventListener('touchend', (e) => {
-        if (!draggedPiece) return;
-        const touch = e.changedTouches[0];
-        const targetEl = document.elementFromPoint(touch.clientX, touch.clientY);
-        const slot = targetEl ? targetEl.closest('.slot') : null;
-
-        if (slot) {
-          checkAndPlacePiece(draggedPiece, slot);
+      if (selectedPiece === piece) {
+        // Deseleccionar si se vuelve a tocar la misma
+        piece.classList.remove('selected');
+        selectedPiece = null;
+      } else {
+        // Seleccionar nueva pieza
+        if (selectedPiece) {
+          selectedPiece.classList.remove('selected');
         }
-        draggedPiece = null;
-      });
-    }
-
-    function handleDropOnSlot(e, slot) {
-      e.preventDefault();
-      if (draggedPiece) {
-        checkAndPlacePiece(draggedPiece, slot);
+        selectedPiece = piece;
+        selectedPiece.classList.add('selected');
+        playSound('select');
       }
     }
 
-    // Encajar pieza si la casilla es la correcta
-    function checkAndPlacePiece(piece, slot) {
-      const pieceIndex = piece.dataset.index;
+    // Al tocar una casilla del tablero
+    function handleSlotClick(slot) {
+      if (!selectedPiece) return;
+
+      const pieceIndex = selectedPiece.dataset.index;
       const slotIndex = slot.dataset.index;
 
-      // Solo encaja si es el lugar correcto y está vacío
+      // Verificar si la pieza coincide exactamente con la casilla toque y si está vacía
       if (pieceIndex === slotIndex && slot.children.length === 0) {
-        piece.classList.add('placed');
-        piece.draggable = false;
-        slot.appendChild(piece);
+        selectedPiece.classList.remove('selected');
+        selectedPiece.classList.add('placed');
+        slot.appendChild(selectedPiece);
         
         placedCount++;
         playSound('snap');
+        selectedPiece = null;
 
         const percentage = Math.floor((placedCount / totalPieces) * 100);
         progressEl.textContent = `${percentage}%`;
